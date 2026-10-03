@@ -94,4 +94,10 @@ check(/^1(01)+0$/.test(recalled.modes), 'repl: raw mode on while editing, off wh
 const cancelled = await call('runNuRepl', ['"dro" + "pped"', '\x03', '"ke" + "pt"\r', 'exit\r']);
 check(/kept/.test(strip(cancelled.out)) && !/dropped/.test(strip(cancelled.out)) && clean(cancelled), 'repl: ctrl+c (0x03) discards the line', `\n${strip(cancelled.out)}${strip(cancelled.err)}`);
 
+const long = `"${'x'.repeat(30)}"`;
+const repaints = (r: {err: string}) => r.err.split(`\x1b]133;B\x1b\\\x1b[0m\x1b[0m\x1b[32m${long}`).length - 1;
+const plain = await call('runNuRepl', [long, '\r', 'exit\r']);
+const resized = await call('runNuRepl', [long, 20, '\r', 'exit\r']);
+check(repaints(resized) === repaints(plain) + 1 && clean(resized), 'repl: resize repaints the line', `  plain=${repaints(plain)} resized=${repaints(resized)}\n${strip(resized.err)}`);
+
 await done();

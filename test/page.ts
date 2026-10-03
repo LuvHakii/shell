@@ -9,7 +9,7 @@ Object.assign(globalThis, {
 		const root = new PreopenDirectory('/', new Map([['sub', new Directory(new Map([['a.txt', new File(new TextEncoder().encode('x\n'))]]))], ['bin', bin]]));
 		return runWasi(module, ['nu', ...args], ['PWD=/', 'PATH=/bin'], root, script, cols);
 	},
-	async runNuRepl(keys: string[]) {
+	async runNuRepl(keys: (string | number)[]) {
 		const tty = new Tty(keys);
 		let modes = '';
 		const dec = new TextDecoder();
@@ -18,7 +18,7 @@ Object.assign(globalThis, {
 		const root = new PreopenDirectory('/', new Map([['sub', new Directory(new Map([['apple.txt', new File(new Uint8Array())]]))]]));
 		const shim = new WASI(['nu'], ['PWD=/', 'HOME=/'], [tty, out, err, root]);
 		const mem = () => shim.inst.exports.memory;
-		const instance = await WebAssembly.instantiate(module, {wasi_snapshot_preview1: shim.wasiImport, tty: makeTty(mem, 80, handleSpawn, () => 0, ms => tty.poll(ms), on => (modes += on))});
+		const instance = await WebAssembly.instantiate(module, {wasi_snapshot_preview1: shim.wasiImport, tty: makeTty(mem, () => tty.cols(), handleSpawn, () => 0, ms => tty.poll(ms), on => (modes += on))});
 		try {
 			shim.start(instance as {exports: {memory: WebAssembly.Memory; _start: () => unknown}});
 		} catch (e) {

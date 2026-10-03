@@ -27,8 +27,10 @@ export class Stdin extends Fd {
 
 export class Tty extends Fd {
 	#buf: number[] = [];
+	#cols = 80;
+	#resized = false;
 
-	constructor(private keys: string[]) {
+	constructor(private keys: (string | number)[]) {
 		super();
 	}
 
@@ -36,13 +38,21 @@ export class Tty extends Fd {
 		this.#buf.push(...enc.encode(s));
 	}
 
+	cols() {
+		this.#resized = false;
+		return this.#cols;
+	}
+
 	poll(ms: number) {
-		if (!this.#buf.length && ms < 0) {
+		if (!this.#buf.length && !this.#resized && ms < 0) {
 			const next = this.keys.shift();
 			if (next === undefined) throw new Error('repl waited for input after the last key');
-			this.push(next);
+			if (typeof next === 'number') {
+				this.#cols = next;
+				this.#resized = true;
+			} else this.push(next);
 		}
-		return this.#buf.length ? 1 : 0;
+		return this.#resized ? 2 : this.#buf.length ? 1 : 0;
 	}
 
 	override fd_read(size: number) {
@@ -115,7 +125,7 @@ export function handleSpawn(b: Uint8Array): Uint8Array | null {
 	return res;
 }
 
-export function makeTty(mem: () => WebAssembly.Memory, cols = 80, spawn = handleSpawn, interrupted = () => 0, poll = (_ms: number) => 0, raw = (_on: number) => {}) {
+export function makeTty(mem: () => WebAssembly.Memory, cols: number | (() => number) = 80, spawn = handleSpawn, interrupted = () => 0, poll = (_ms: number) => 0, raw = (_on: number) => {}) {
 	let staged: Uint8Array = new Uint8Array();
 	return {
 		spawn(ptr: number, len: number) {
@@ -130,7 +140,7 @@ export function makeTty(mem: () => WebAssembly.Memory, cols = 80, spawn = handle
 		winsize(ptr: number) {
 			const v = new DataView(mem().buffer);
 			v.setUint16(ptr, 24, true);
-			v.setUint16(ptr + 2, cols, true);
+			v.setUint16(ptr + 2, typeof cols === 'number' ? cols : cols(), true);
 		},
 		interrupted,
 		poll,

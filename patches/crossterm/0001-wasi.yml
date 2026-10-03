@@ -119,8 +119,13 @@ fix: |-
       let timeout = PollTimeout::new(timeout);
       loop {
           let ms = timeout.leftover().map_or(-1, |t| t.as_millis() as i32);
-          if unsafe { poll(ms) } == 0 {
-              return Ok(None);
+          match unsafe { poll(ms) } {
+              0 => return Ok(None),
+              2 => {
+                  let (cols, rows) = crate::terminal::size()?;
+                  return Ok(Some(InternalEvent::Event(crate::event::Event::Resize(cols, rows))));
+              }
+              _ => {}
           }
           let read_count = io::Read::read(&mut *self.tty_fd, &mut self.tty_buffer)?;
           self.parser.advance(&self.tty_buffer[..read_count], read_count == TTY_BUFFER_SIZE);
