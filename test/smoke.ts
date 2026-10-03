@@ -5,7 +5,7 @@ import {WASI} from 'node:wasi';
 const dist = new URL('../dist/', import.meta.url);
 const root = mkdtempSync(`${tmpdir()}/smoke-`);
 writeFileSync(`${root}/x.txt`, '1\n2\n');
-const tty = {spawn: () => -1, spawn_read() {}, winsize() {}, interrupted: () => 0};
+const tty = {spawn: () => -1, spawn_read() {}, winsize() {}, interrupted: () => 0, poll: () => 0, raw() {}};
 
 async function run(wasm: string, args: string[], stdin = '') {
 	writeFileSync(`${root}/.in`, stdin);

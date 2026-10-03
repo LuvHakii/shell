@@ -8,9 +8,12 @@ name = "nu"
 path = "src/main.rs"
 
 [dependencies]
+nu-cli = { path = "../nushell/crates/nu-cli", default-features = false }
 nu-cmd-lang = { path = "../nushell/crates/nu-cmd-lang", default-features = false }
 nu-command = { path = "../nushell/crates/nu-command", default-features = false, features = ["which"] }
 nu-engine = { path = "../nushell/crates/nu-engine", default-features = false }
 nu-parser = { path = "../nushell/crates/nu-parser", default-features = false }
 nu-protocol = { path = "../nushell/crates/nu-protocol", default-features = false }
 
+[patch.crates-io]
+crossterm = { path = "../crossterm" }

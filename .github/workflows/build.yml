@@ -70,11 +70,11 @@ jobs:
         run: |
           mkdir -p release
           cp dist/*.wasm release/
-          for s in nushell coreutils grep sed findutils awk; do
+          for s in nushell crossterm coreutils grep sed findutils awk; do
             sha=$(git rev-parse "HEAD:$s")
             tag=$(git ls-remote --tags "$(git config -f .gitmodules "submodule.$s.url")" | grep -m1 "^$sha" | sed 's#.*refs/tags/##; s#\^{}##' || true)
             jq -n --arg s "$s" --arg rev "${tag:-$sha}" --arg sha "$sha" '{($s): {rev: $rev, baseCommit: $sha}}'
-          done | jq -s --argjson patches "$(cd patches && ls */*.yml | jq -R . | jq -s .)" 'add + {patches: $patches}' > release/versions.json
+          done | jq -s --argjson patches "$(cd patches && ls */* | jq -R . | jq -s .)" 'add + {patches: $patches}' > release/versions.json
           jq . release/versions.json
 
       - name: upload dry run

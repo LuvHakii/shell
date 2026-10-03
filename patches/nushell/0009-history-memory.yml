@@ -1,0 +1,8 @@
+# reedline's history file needs File::lock, unsupported on wasi: keep REPL history in memory.
+# want history-memory 1
+id: history-memory
+language: rust
+files: [crates/nu-cli/src/repl.rs]
+rule:
+  pattern: 'FileBackedHistory::with_file($N, $P)'
+fix: 'FileBackedHistory::new($N)'

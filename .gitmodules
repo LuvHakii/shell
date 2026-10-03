@@ -22,3 +22,7 @@
 	path = awk
 	url = https://github.com/onetrueawk/awk.git
 	shallow = true
+[submodule "crossterm"]
+	path = crossterm
+	url = https://github.com/crossterm-rs/crossterm.git
+	shallow = true

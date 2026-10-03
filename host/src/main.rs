@@ -1,8 +1,10 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
+use std::time::Instant;
 
 use nu_parser::{TokenContents, lex, parse};
 use nu_protocol::{
     PipelineData, ShellError, Span, UseAnsiColoring, Value,
+    config::BannerKind,
     debugger::WithoutDebug,
     engine::{EngineState, Stack, StateWorkingSet},
     report_parse_error, report_shell_error,
@@ -48,8 +50,11 @@ fn run(engine_state: &mut EngineState, stack: &mut Stack, line: &str) {
 fn main() {
     let mut engine_state = nu_cmd_lang::create_default_context();
     engine_state = nu_command::add_shell_command_context(engine_state);
+    engine_state = nu_cli::add_cli_context(engine_state);
     let mut config = engine_state.get_config().as_ref().clone();
     config.use_ansi_coloring = UseAnsiColoring::True;
+    config.show_banner = BannerKind::None;
+    config.hooks.display_output = None;
     engine_state.set_config(config);
     let mut stack = Stack::new();
     engine_state.add_env_var("PWD".into(), Value::string("/", Span::unknown()));
@@ -63,6 +68,13 @@ fn main() {
     let mut out = io::stdout();
     if let Some(script) = std::env::args().skip_while(|a| a != "-e").nth(1) {
         run(&mut engine_state, &mut stack, &script);
+    }
+    if stdin.is_terminal() {
+        engine_state.is_interactive = true;
+        if let Err(err) = nu_cli::evaluate_repl(&mut engine_state, stack, None, None, Instant::now().into()) {
+            eprintln!("{err:?}");
+        }
+        return;
     }
     let mut line = String::new();
     loop {

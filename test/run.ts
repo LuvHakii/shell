@@ -80,4 +80,18 @@ check(widest(narrow.out) <= 40 && widest(broad.out) > 40, 'table width follows w
 const intr = await call('runNuWorker', '1..100000000 | each {|x| $x} | length', 0, {interruptAfter: 500});
 check(/interrupt/i.test(strip(intr.err + intr.out)) && intr.elapsed < 8000, 'interrupted import aborts a long loop', `  elapsed=${Math.round(intr.elapsed)}ms ${strip(intr.err + intr.out).trim()}`);
 
+const hellos = (s: string) => strip(s).split('hello').length - 1;
+const clean = (r: {err: string}) => !/Error|panicked/.test(r.err);
+const tabbed = await call('runNuRepl', ['ls /sub/ap', '\t', '\r', 'exit\r']);
+check(/apple\.txt[\s\S]*file/.test(strip(tabbed.out)) && clean(tabbed), 'repl: tab completes a path', `\n${strip(tabbed.out)}${strip(tabbed.err)}`);
+const recalled = await call('runNuRepl', ['"he" + "llo"\r', '\x1b[A', '\r', 'exit\r']);
+check(hellos(recalled.out) === 2 && clean(recalled), 'repl: up arrow recalls history', `\n${strip(recalled.out)}${strip(recalled.err)}`);
+const hinted = await call('runNuRepl', ['"he" + "llo"\r', '"he', '\x1b[C', '\r', 'exit\r']);
+check(hellos(hinted.out) === 2 && clean(hinted), 'repl: right arrow accepts the history hint', `\n${strip(hinted.out)}${strip(hinted.err)}`);
+
+check(/^1(01)+0$/.test(recalled.modes), 'repl: raw mode on while editing, off while a command runs', `  modes=${recalled.modes}`);
+
+const cancelled = await call('runNuRepl', ['"dro" + "pped"', '\x03', '"ke" + "pt"\r', 'exit\r']);
+check(/kept/.test(strip(cancelled.out)) && !/dropped/.test(strip(cancelled.out)) && clean(cancelled), 'repl: ctrl+c (0x03) discards the line', `\n${strip(cancelled.out)}${strip(cancelled.err)}`);
+
 await done();

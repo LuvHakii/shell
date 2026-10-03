@@ -1,5 +1,5 @@
 import {Directory, File, PreopenDirectory, WASI} from '@bjorn3/browser_wasi_shim';
-import {HEADER, type Poll, Sink, Stdin, handleSpawn, makeTty, pollClock, runWasi} from './io';
+import {HEADER, type Poll, Sink, Stdin, Tty, handleSpawn, makeTty, pollClock, runWasi} from './io';
 
 const module = await WebAssembly.compileStreaming(fetch('/nu.wasm'));
 
@@ -8,6 +8,23 @@ Object.assign(globalThis, {
 		const bin = new Directory(new Map(['echo', 'cat', 'fail', 'printf'].map(n => [n, new File(new Uint8Array())])));
 		const root = new PreopenDirectory('/', new Map([['sub', new Directory(new Map([['a.txt', new File(new TextEncoder().encode('x\n'))]]))], ['bin', bin]]));
 		return runWasi(module, ['nu', ...args], ['PWD=/', 'PATH=/bin'], root, script, cols);
+	},
+	async runNuRepl(keys: string[]) {
+		const tty = new Tty(keys);
+		let modes = '';
+		const dec = new TextDecoder();
+		const out = new Sink(d => dec.decode(d).includes('\x1b[6n') && tty.push('\x1b[1;1R'));
+		const err = new Sink();
+		const root = new PreopenDirectory('/', new Map([['sub', new Directory(new Map([['apple.txt', new File(new Uint8Array())]]))]]));
+		const shim = new WASI(['nu'], ['PWD=/', 'HOME=/'], [tty, out, err, root]);
+		const mem = () => shim.inst.exports.memory;
+		const instance = await WebAssembly.instantiate(module, {wasi_snapshot_preview1: shim.wasiImport, tty: makeTty(mem, 80, handleSpawn, () => 0, ms => tty.poll(ms), on => (modes += on))});
+		try {
+			shim.start(instance as {exports: {memory: WebAssembly.Memory; _start: () => unknown}});
+		} catch (e) {
+			err.fd_write(new TextEncoder().encode(String(e)));
+		}
+		return {out: out.text(), err: err.text(), modes};
 	},
 	async runNuJspi(script: string) {
 		const out = new Sink();

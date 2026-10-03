@@ -21,6 +21,35 @@ export class Stdin extends Fd {
 	}
 
 	override fd_fdstat_get() {
+		return {ret: 0, fdstat: new wasi.Fdstat(wasi.FILETYPE_REGULAR_FILE, 0)};
+	}
+}
+
+export class Tty extends Fd {
+	#buf: number[] = [];
+
+	constructor(private keys: string[]) {
+		super();
+	}
+
+	push(s: string) {
+		this.#buf.push(...enc.encode(s));
+	}
+
+	poll(ms: number) {
+		if (!this.#buf.length && ms < 0) {
+			const next = this.keys.shift();
+			if (next === undefined) throw new Error('repl waited for input after the last key');
+			this.push(next);
+		}
+		return this.#buf.length ? 1 : 0;
+	}
+
+	override fd_read(size: number) {
+		return {ret: 0, data: new Uint8Array(this.#buf.splice(0, size))};
+	}
+
+	override fd_fdstat_get() {
 		return {ret: 0, fdstat: new wasi.Fdstat(wasi.FILETYPE_CHARACTER_DEVICE, 0)};
 	}
 }
@@ -28,8 +57,13 @@ export class Stdin extends Fd {
 export class Sink extends Fd {
 	chunks: Uint8Array[] = [];
 
+	constructor(private onWrite?: (data: Uint8Array) => void) {
+		super();
+	}
+
 	override fd_write(data: Uint8Array) {
 		this.chunks.push(data.slice());
+		this.onWrite?.(data);
 		return {ret: 0, nwritten: data.byteLength};
 	}
 
@@ -81,7 +115,7 @@ export function handleSpawn(b: Uint8Array): Uint8Array | null {
 	return res;
 }
 
-export function makeTty(mem: () => WebAssembly.Memory, cols = 80, spawn = handleSpawn, interrupted = () => 0) {
+export function makeTty(mem: () => WebAssembly.Memory, cols = 80, spawn = handleSpawn, interrupted = () => 0, poll = (_ms: number) => 0, raw = (_on: number) => {}) {
 	let staged: Uint8Array = new Uint8Array();
 	return {
 		spawn(ptr: number, len: number) {
@@ -98,7 +132,9 @@ export function makeTty(mem: () => WebAssembly.Memory, cols = 80, spawn = handle
 			v.setUint16(ptr, 24, true);
 			v.setUint16(ptr + 2, cols, true);
 		},
-		interrupted
+		interrupted,
+		poll,
+		raw
 	};
 }
 

@@ -1,0 +1,18 @@
+# std::env::temp_dir and std::process::id panic on wasi: the REPL's buffer-editor file and $nu.temp-dir use /tmp, $nu.pid is 0.
+# want temp-dir 4
+# want pid 1
+id: temp-dir
+language: rust
+files: [crates/nu-cli/src/repl.rs, crates/nu-protocol/src/eval_const.rs]
+rule:
+  any:
+    - pattern: 'temp_dir()'
+    - pattern: 'std::env::temp_dir()'
+fix: 'std::path::PathBuf::from("/tmp")'
+---
+id: pid
+language: rust
+files: [crates/nu-protocol/src/eval_const.rs]
+rule:
+  pattern: 'std::process::id()'
+fix: '0u32'

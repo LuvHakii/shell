@@ -1,0 +1,134 @@
+# Build the unix backend on wasi: termios swapped for overlay sys/wasi.rs, stdin polled through the host's tty.poll.
+# want unix-ungate 28
+# want sys-wasi 1
+# want sys-drop-fd 1
+# want mio-drop-uses 3
+# want mio-drop-event-import 1
+# want mio-drop-tokens 2
+# want mio-fields 1
+# want mio-new 1
+# want mio-try-read 1
+id: unix-ungate
+language: rust
+files:
+  - src/cursor/sys.rs
+  - src/event.rs
+  - src/event/filter.rs
+  - src/event/read.rs
+  - src/event/source.rs
+  - src/event/sys.rs
+  - src/terminal.rs
+  - src/terminal/sys.rs
+rule:
+  pattern: '#[cfg(unix)]'
+fix: ''
+---
+id: sys-wasi
+language: rust
+files: [src/terminal/sys.rs]
+rule:
+  pattern: 'mod unix;'
+fix: |-
+  #[path = "sys/wasi.rs"]
+  mod unix;
+---
+id: sys-drop-fd
+language: rust
+files: [src/terminal/sys.rs]
+rule:
+  kind: mod_item
+  has: { field: name, regex: '^file_descriptor$' }
+fix: ''
+---
+id: mio-drop-uses
+language: rust
+files: [src/event/source/unix/mio.rs]
+rule:
+  kind: use_declaration
+  regex: '^use (mio|signal_hook_mio|crate::terminal::sys::file_descriptor)::'
+fix: ''
+---
+id: mio-drop-event-import
+language: rust
+files: [src/event/source/unix/mio.rs]
+rule:
+  kind: identifier
+  regex: '^Event$'
+  inside: { kind: use_declaration, stopBy: end }
+fix:
+  template: ''
+  expandEnd: { regex: ',' }
+---
+id: mio-drop-tokens
+language: rust
+files: [src/event/source/unix/mio.rs]
+rule:
+  kind: const_item
+  has: { field: name, regex: '^(TTY|SIGNAL)_TOKEN$' }
+fix: ''
+---
+id: mio-fields
+language: rust
+files: [src/event/source/unix/mio.rs]
+rule:
+  kind: field_declaration_list
+  inside: { kind: struct_item, has: { field: name, regex: '^UnixInternalEventSource$' } }
+fix: |-
+  {
+      parser: Parser,
+      tty_buffer: [u8; TTY_BUFFER_SIZE],
+      tty_fd: std::mem::ManuallyDrop<std::fs::File>,
+  }
+---
+id: mio-new
+language: rust
+files: [src/event/source/unix/mio.rs]
+rule:
+  kind: declaration_list
+  inside:
+    kind: impl_item
+    field: body
+    has: { field: type, regex: '^UnixInternalEventSource$' }
+    not: { has: { field: trait, pattern: $T } }
+fix: |-
+  {
+      pub fn new() -> io::Result<Self> {
+          Ok(UnixInternalEventSource {
+              parser: Parser::default(),
+              tty_buffer: [0u8; TTY_BUFFER_SIZE],
+              tty_fd: std::mem::ManuallyDrop::new(unsafe { std::os::fd::FromRawFd::from_raw_fd(0) }),
+          })
+      }
+  }
+---
+id: mio-try-read
+language: rust
+files: [src/event/source/unix/mio.rs]
+rule:
+  kind: block
+  inside: { kind: function_item, field: body, has: { field: name, regex: '^try_read$' } }
+fix: |-
+  {
+      #[link(wasm_import_module = "tty")]
+      unsafe extern "C" {
+          fn poll(timeout_ms: i32) -> i32;
+      }
+      if let Some(event) = self.parser.next() {
+          return Ok(Some(event));
+      }
+      let timeout = PollTimeout::new(timeout);
+      loop {
+          let ms = timeout.leftover().map_or(-1, |t| t.as_millis() as i32);
+          if unsafe { poll(ms) } == 0 {
+              return Ok(None);
+          }
+          let read_count = io::Read::read(&mut *self.tty_fd, &mut self.tty_buffer)?;
+          self.parser.advance(&self.tty_buffer[..read_count], read_count == TTY_BUFFER_SIZE);
+          if let Some(event) = self.parser.next() {
+              return Ok(Some(event));
+          }
+          if timeout.elapsed() {
+              return Ok(None);
+          }
+      }
+  }

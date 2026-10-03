@@ -19,8 +19,12 @@ apply_patches() {
   fi
   git -C "$REPO" submodule update -q --init --depth 1 "$1"
   [ ! -d "$REPO/overlay/$1" ] || cp -r "$REPO/overlay/$1/." "$src/"
-  for r in "$REPO/patches/$1"/*.yml; do
+  for r in "$REPO/patches/$1"/*; do
     [ -e "$r" ] || continue
+    if [[ $r == *.sh ]]; then
+      (cd "$src" && bash -e "$r")
+      continue
+    fi
     want_counts=$(grep '^# want ' "$r" | cut -d' ' -f3,4 | sort)
     got=$(cd "$src" && "$AST_GREP" scan -r "$r" --json=stream | jq -r .ruleId | sort | uniq -c | while read -r n id; do echo "$id $n"; done)
     if [ "$got" != "$want_counts" ]; then

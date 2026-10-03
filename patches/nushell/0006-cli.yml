@@ -1,0 +1,62 @@
+# nu-cli without the "os" feature: drop child-process handling; PATH completion treats any file as executable; completions run on the REPL thread, not a worker.
+# want cli-drop-exit-import 2
+# want cli-exit-ok-false 1
+# want cli-exit-ok 1
+# want cli-drop-child-arm 1
+# want cli-print-drop-child 1
+# want cli-complete-executable 1
+# want cli-complete-sync 1
+id: cli-drop-exit-import
+language: rust
+files: [crates/nu-cli/src/util.rs, crates/nu-cli/src/eval_cmds.rs]
+rule:
+  kind: scoped_identifier
+  regex: '^process::check_exit_status_future$'
+  inside: { kind: use_declaration, stopBy: end }
+fix:
+  template: ''
+  expandEnd: { regex: ',' }
+---
+id: cli-exit-ok-false
+language: rust
+files: [crates/nu-cli/src/util.rs]
+rule:
+  pattern: 'check_exit_status_future($E).map(|_| false)'
+fix: 'Ok(false)'
+---
+id: cli-exit-ok
+language: rust
+files: [crates/nu-cli/src/eval_cmds.rs]
+rule:
+  pattern: 'check_exit_status_future($E)'
+fix: 'Ok(())'
+---
+id: cli-drop-child-arm
+language: rust
+files: [crates/nu-cli/src/util.rs]
+rule:
+  kind: match_arm
+  has: { field: pattern, regex: '^ByteStreamSource::Child' }
+fix: ''
+---
+id: cli-print-drop-child
+language: rust
+files: [crates/nu-cli/src/commands/print.rs]
+rule:
+  pattern: 'if $$$C { child.ignore_error(true); }'
+fix: ''
+---
+id: cli-complete-executable
+language: rust
+files: [crates/nu-cli/src/completions/command_completions.rs]
+rule:
+  pattern: 'is_executable::is_executable($P)'
+fix: '$P.is_file()'
+---
+id: cli-complete-sync
+language: rust
+files: [crates/nu-cli/src/completions/completer.rs]
+rule:
+  pattern: 'engine.interactive_completer_at(line, pos)'
+  inside: { kind: function_item, stopBy: end, has: { field: name, regex: '^complete$' } }
+fix: 'true'
