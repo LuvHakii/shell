@@ -16,27 +16,7 @@ permissions:
 
 jobs:
   build:
-    name: build ${{ matrix.name }}
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: nu
-            run: bash scripts/build.sh
-            ws: host
-          - name: coreutils
-            run: bash scripts/build-coreutils.sh
-            ws: coreutils
-          - name: tools
-            run: |
-              bash scripts/build-rust.sh grep grep
-              bash scripts/build-rust.sh sed sed
-              bash scripts/build-rust.sh findutils find
-              bash scripts/build-awk.sh
-            ws: |
-              grep
-              sed
-              findutils
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,29 +38,31 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           build-warnings: warn
-          cache-key: ${{ matrix.name }}
-          cache-workspaces: ${{ matrix.ws }}
+          cache-workspaces: |
+            host
+            coreutils
+            grep
+            sed
+            findutils
 
-      - name: build ${{ matrix.name }}
-        run: ${{ matrix.run }}
+      - parallel:
+          - name: build nu
+            run: bash scripts/build.sh
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wasm-${{ matrix.name }}
-          path: dist/*.wasm
-          retention-days: 1
+          - name: build coreutils
+            run: bash scripts/build-coreutils.sh
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+          - name: build grep
+            run: bash scripts/build-rust.sh grep grep
 
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: wasm-*
-          path: dist
-          merge-multiple: true
+          - name: build sed
+            run: bash scripts/build-rust.sh sed sed
+
+          - name: build find
+            run: bash scripts/build-rust.sh findutils find
+
+          - name: build awk
+            run: bash scripts/build-awk.sh
 
       - name: smoke
         run: node test/smoke.ts
