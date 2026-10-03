@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   build:
+    name: build ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
