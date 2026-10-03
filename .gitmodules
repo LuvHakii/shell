@@ -26,3 +26,6 @@
 	path = crossterm
 	url = https://github.com/crossterm-rs/crossterm.git
 	shallow = true
+[submodule "wasi-libc-patches"]
+	path = wasi-libc-patches
+	url = https://github.com/LuvHakii/wasi-libc-patches

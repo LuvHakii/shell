@@ -37,9 +37,17 @@ apply_patches() {
   echo "$want" > "$src/.patched"
 }
 
+# every tool starts in $PWD: getcwd() and relative paths follow the host's PWD
+cwd_object() {
+  local obj=$REPO/wasi-libc-patches/dist/cwd-wasm32-wasip1.o
+  [ -f "$obj" ] || CC="$WASI_SDK_PATH/bin/clang" "$REPO/wasi-libc-patches/scripts/build.sh" >/dev/null
+  echo "$obj"
+}
+
 cargo_wasm() {
   local dir=$1
   shift
+  export CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="${CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS:-} -C link-arg=$(cwd_object)"
   export CARGO_PROFILE_RELEASE_OPT_LEVEL=z CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_PANIC=abort CARGO_PROFILE_RELEASE_STRIP=true CARGO_PROFILE_RELEASE_DEBUG=false
   (cd "$dir" && cargo build --release --target wasm32-wasip1 "$@")

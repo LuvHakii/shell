@@ -13,3 +13,5 @@ fi
 if [ ! -x "$WASI_SDK_PATH/bin/clang" ]; then
   curl -fsSL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VER%%.*}/wasi-sdk-$WASI_SDK_VER-x86_64-linux.tar.gz" | tar xz -C "$ROOT"
 fi
+
+cwd_object >/dev/null
