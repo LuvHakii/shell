@@ -1,0 +1,18 @@
+# Terminal size from the host's tty.winsize.
+# want winsize-host 1
+id: winsize-host
+language: rust
+files: [crates/nu-utils/src/utils.rs]
+rule:
+  kind: block
+  inside: { kind: function_item, field: body, has: { field: name, regex: '^terminal_size$' } }
+fix: |-
+  {
+      #[link(wasm_import_module = "tty")]
+      unsafe extern "C" {
+          fn winsize(rows_cols: *mut u16);
+      }
+      let mut size = [0u16; 2];
+      unsafe { winsize(size.as_mut_ptr()) };
+      Ok((size[1], size[0]))
+  }

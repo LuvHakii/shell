@@ -1,0 +1,128 @@
+# id answers for root only (uid/gid 0, groups 0); drops the getuid/getlogin/audit code wasi lacks.
+# want id-drop-imports 2
+# want id-uumain 1
+# want id-drop-items 17
+id: id-drop-imports
+language: rust
+files: [src/uu/id/src/id.rs]
+rule:
+  kind: use_declaration
+  regex: '^use (uucore::libc::getlogin;|rustix::process::)'
+fix: ''
+---
+id: id-uumain
+language: rust
+files: [src/uu/id/src/id.rs]
+rule:
+  kind: block
+  inside: { kind: function_item, has: { field: name, regex: '^uumain$' }, field: body }
+fix: |-
+  {
+      let matches = uucore::clap_localization::handle_clap_result(uu_app(), args)?;
+      let mut lock = io::stdout().lock();
+
+      let users: Vec<String> = matches
+          .get_many::<String>(options::ARG_USERS)
+          .map(|v| v.map(ToString::to_string).collect())
+          .unwrap_or_default();
+
+      let nflag = matches.get_flag(options::OPT_NAME);
+      let uflag = matches.get_flag(options::OPT_EFFECTIVE_USER);
+      let gflag = matches.get_flag(options::OPT_GROUP);
+      let gsflag = matches.get_flag(options::OPT_GROUPS);
+      let rflag = matches.get_flag(options::OPT_REAL_ID);
+      let zflag = matches.get_flag(options::OPT_ZERO);
+      let cflag = matches.get_flag(options::OPT_CONTEXT);
+
+      let default_format = !(uflag || gflag || gsflag);
+
+      if (nflag || rflag) && default_format && !cflag {
+          return Err(USimpleError::new(
+              1,
+              translate!("id-error-names-real-ids-require-flags"),
+          ));
+      }
+      if zflag && default_format && !cflag {
+          return Err(USimpleError::new(
+              1,
+              translate!("id-error-zero-not-permitted-default"),
+          ));
+      }
+      if !users.is_empty() && cflag {
+          return Err(USimpleError::new(
+              1,
+              translate!("id-error-cannot-print-context-with-user"),
+          ));
+      }
+      if cflag {
+          return Err(USimpleError::new(
+              1,
+              translate!("id-error-context-security-only"),
+          ));
+      }
+      if matches.get_flag(options::OPT_AUDIT) {
+          return Ok(());
+      }
+
+      let line_ending = LineEnding::from_zero_flag(zflag);
+      let id = if nflag { "root" } else { "0" };
+
+      for i in 0..users.len().max(1) {
+          if let Some(user) = users.get(i)
+              && Passwd::locate(user.as_str()).is_err()
+          {
+              show_error!(
+                  "{}",
+                  translate!("id-error-no-such-user", "user" => user.quote())
+              );
+              set_exit_code(1);
+              continue;
+          }
+
+          if matches.get_flag(options::OPT_PASSWORD) {
+              writeln!(lock, "root::0:0:root:/root:/bin/sh")?;
+              return Ok(());
+          }
+          if matches.get_flag(options::OPT_HUMAN_READABLE) {
+              writeln!(
+                  lock,
+                  "{}\troot\n{}\troot",
+                  translate!("id-output-uid"),
+                  translate!("id-output-groups")
+              )?;
+              return Ok(());
+          }
+
+          if gflag {
+              write!(lock, "{id}")?;
+          }
+          if uflag {
+              write!(lock, "{id}")?;
+          }
+          if gsflag {
+              write!(lock, "{id}")?;
+          }
+          if default_format {
+              write!(lock, "uid=0(root) gid=0(root) groups=0(root)")?;
+          }
+          write!(lock, "{line_ending}")?;
+      }
+
+      Ok(())
+  }
+---
+id: id-drop-items
+language: rust
+files: [src/uu/id/src/id.rs]
+utils:
+  doomed:
+    any: [{ kind: function_item }, { kind: mod_item }]
+    has: { field: name, regex: '^(pretty|pline|auditid|group_list_real_gid_first|sort_real_gid_first|id_print|audit)$' }
+rule:
+  any:
+    - matches: doomed
+    - any: [{ kind: attribute_item }, { kind: line_comment }]
+      precedes:
+        matches: doomed
+        stopBy: { not: { any: [{ kind: attribute_item }, { kind: line_comment }] } }
+fix: ''

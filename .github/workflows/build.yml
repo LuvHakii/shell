@@ -1,0 +1,99 @@
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish release <yyyymmdd-hhmm> UTC. Off = dry run, artifact only, 7 days."
+        type: boolean
+        default: false
+
+concurrency:
+  group: build
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: read wasi-sdk pin
+        id: pin
+        run: source scripts/common.sh && echo "wasi_sdk=$WASI_SDK_VER" >> "$GITHUB_OUTPUT"
+
+      - name: install wasi-sdk
+        uses: bytecodealliance/setup-wasi-sdk-action@v1
+        with:
+          version: ${{ steps.pin.outputs.wasi_sdk }}
+
+      - name: setup
+        run: bash scripts/setup.sh
+
+      - name: install rust (rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          build-warnings: warn
+          cache-workspaces: |
+            host
+            coreutils
+            grep
+            sed
+            findutils
+
+      - name: build nu
+        run: bash scripts/build.sh
+
+      - name: build coreutils
+        run: bash scripts/build-coreutils.sh
+
+      - name: build grep
+        run: bash scripts/build-rust.sh grep grep
+
+      - name: build sed
+        run: bash scripts/build-rust.sh sed sed
+
+      - name: build find
+        run: bash scripts/build-rust.sh findutils find
+
+      - name: build awk
+        run: bash scripts/build-awk.sh
+
+      - name: smoke
+        run: node test/smoke.ts
+
+      - name: stage release
+        run: |
+          mkdir -p release
+          cp dist/*.wasm release/
+          for s in nushell coreutils grep sed findutils awk; do
+            sha=$(git rev-parse "HEAD:$s")
+            tag=$(git ls-remote --tags "$(git config -f .gitmodules "submodule.$s.url")" | grep -m1 "^$sha" | sed 's#.*refs/tags/##; s#\^{}##' || true)
+            jq -n --arg s "$s" --arg rev "${tag:-$sha}" --arg sha "$sha" '{($s): {rev: $rev, baseCommit: $sha}}'
+          done | jq -s --argjson patches "$(cd patches && ls */*.yml | jq -R . | jq -s .)" 'add + {patches: $patches}' > release/versions.json
+          jq . release/versions.json
+
+      - name: upload dry run
+        if: '!inputs.release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: shell-wasm-dryrun-${{ github.sha }}
+          path: release/
+          retention-days: 7
+
+      - name: release
+        if: inputs.release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(date -u +%Y%m%d-%H%M)
+          NOTES=$(jq -r 'to_entries[] | select(.key != "patches") | "\(.key): \(.value.rev) (\(.value.baseCommit))"' release/versions.json)
+          gh release create "$TAG" release/*.wasm release/versions.json \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+          || gh release upload "$TAG" release/*.wasm release/versions.json --clobber

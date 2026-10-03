@@ -1,0 +1,105 @@
+# stat on wasi: std::os::wasi metadata plus overlay wasi_meta.rs (mode/uid/gid/blocks synthesized), one "/" mount, -f unsupported, ctime = mtime.
+# want stat-wasi-ext 1
+# want stat-drop-fs-import 1
+# want stat-fsext-items 4
+# want stat-wasi-meta 1
+# want stat-drop-fs-tokens 1
+# want stat-no-statfs 1
+# want stat-root-mount 1
+# want stat-stdin-not-fifo 1
+# want fsext-ctime 1
+id: stat-wasi-ext
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  pattern: $U
+  kind: use_declaration
+  inside: { kind: source_file }
+  not: { follows: { kind: use_declaration, stopBy: end } }
+fix: |-
+  #![feature(wasi_ext)]
+
+  $U
+---
+id: stat-drop-fs-import
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  kind: use_declaration
+  has: { stopBy: end, kind: identifier, regex: '^major$' }
+fix: ''
+---
+id: stat-fsext-items
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  kind: identifier
+  regex: '^(FsMeta|StatFs|pretty_filetype|statfs)$'
+  inside: { kind: use_list, inside: { kind: use_declaration, regex: '^use uucore::fsext::', stopBy: end } }
+fix:
+  template: ''
+  expandEnd: { regex: ',' }
+---
+id: stat-wasi-meta
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  pattern: use std::os::unix::fs::{FileTypeExt, MetadataExt};
+fix: |-
+  mod wasi_meta;
+  use wasi_meta::*;
+---
+id: stat-drop-fs-tokens
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  kind: function_item
+  has: { field: name, regex: '^process_token_filesystem$' }
+fix: ''
+---
+id: stat-no-statfs
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  kind: expression_statement
+  has: { kind: match_expression, has: { field: value, pattern: statfs(&file) } }
+fix: |-
+  show_error!(
+      "{}",
+      StatError::CannotReadFilesystemInfo {
+          file: display_name.quote().to_string(),
+          error: "not supported".to_owned()
+      }
+  );
+  return Ok(1);
+---
+id: stat-root-mount
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  pattern: let mut mount_list = $E;
+  inside: { kind: function_item, has: { field: name, regex: '^populate_mount_list$' }, stopBy: end }
+fix: let mut mount_list = vec![OsString::from("/")];
+---
+id: stat-stdin-not-fifo
+language: rust
+files: [src/uu/stat/src/stat.rs]
+rule:
+  pattern: let stdin_is_fifo = $E;
+fix: let stdin_is_fifo = false;
+---
+id: fsext-ctime
+language: rust
+files: [src/uucore/src/lib/features/fsext/mod.rs]
+rule:
+  kind: block
+  inside:
+    kind: function_item
+    field: body
+    all:
+      - has: { field: name, regex: '^metadata_get_change_time$' }
+      - has: { field: parameters, regex: '_md' }
+fix: |-
+  {
+      _md.modified().ok()
+  }

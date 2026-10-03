@@ -1,0 +1,8 @@
+# GNU grep colors only with --color; uutils defaults to auto, and WASI stdout looks like a tty.
+# want color-default-never 1
+id: color-default-never
+language: rust
+files: [src/lib.rs]
+rule:
+  pattern: 'matches.get_one::<String>("color").map_or("", $F)'
+fix: 'matches.get_one::<String>("color").map_or("never", $F)'

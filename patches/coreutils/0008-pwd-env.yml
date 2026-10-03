@@ -1,0 +1,14 @@
+# pwd -P reports $PWD (wasi has no physical cwd to resolve).
+# want pwd-physical-env 1
+id: pwd-physical-env
+language: rust
+files: [src/uu/pwd/src/pwd.rs]
+rule:
+  kind: block
+  inside: { kind: function_item, has: { field: name, regex: '^physical_path$' }, field: body }
+fix: |-
+  {
+      env::var_os("PWD")
+          .map(PathBuf::from)
+          .ok_or_else(|| io::ErrorKind::NotFound.into())
+  }

@@ -1,0 +1,48 @@
+# du on wasi: std::os::wasi metadata, blocks from size, stats printed on the main thread (wasip1 has no threads).
+# want du-wasi-ext 1
+# want du-metadata-ext 1
+# want du-blocks 1
+# want du-no-spawn 1
+# want du-print-inline 1
+id: du-wasi-ext
+language: rust
+files: [src/uu/du/src/du.rs]
+rule:
+  pattern: $U
+  kind: use_declaration
+  inside: { kind: source_file }
+  not: { follows: { kind: use_declaration, stopBy: end } }
+fix: |-
+  #![feature(wasi_ext)]
+
+  $U
+---
+id: du-metadata-ext
+language: rust
+files: [src/uu/du/src/du.rs]
+rule:
+  pattern: use std::os::unix::fs::MetadataExt;
+fix: use std::os::wasi::fs::MetadataExt;
+---
+id: du-blocks
+language: rust
+files: [src/uu/du/src/du.rs]
+rule:
+  pattern: metadata.blocks()
+  inside: { kind: function_item, has: { field: name, regex: '^get_blocks$' }, stopBy: end }
+fix: metadata.len().div_ceil(512)
+---
+id: du-no-spawn
+language: rust
+files: [src/uu/du/src/du.rs]
+rule:
+  pattern: let $T = thread::spawn($$$);
+fix: ''
+---
+id: du-print-inline
+language: rust
+files: [src/uu/du/src/du.rs]
+rule:
+  kind: expression_statement
+  pattern: $T.join().map_err($$$)??;
+fix: stat_printer.print_stats(&rx)?;

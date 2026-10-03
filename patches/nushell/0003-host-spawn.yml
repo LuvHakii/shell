@@ -1,0 +1,66 @@
+# run-external, complete, input and which from overlay external.rs; externals run through the host's tty.spawn.
+# want lib-external-mod 1
+# want lib-external-use 1
+# want ctx-external 1
+# want which-split-paths 2
+# want which-wasm-executable 1
+# want drain-keep-exit-code 1
+id: lib-external-mod
+language: rust
+files: [crates/nu-command/src/lib.rs]
+rule:
+  pattern: 'mod filesystem;'
+fix: |-
+  mod external;
+  mod filesystem;
+---
+id: lib-external-use
+language: rust
+files: [crates/nu-command/src/lib.rs]
+rule:
+  pattern: 'pub use filesystem::*;'
+fix: |-
+  pub use external::*;
+  pub use filesystem::*;
+---
+id: ctx-external
+language: rust
+files: [crates/nu-command/src/default_context.rs]
+rule:
+  kind: identifier
+  regex: '^Cd$'
+  inside: { stopBy: end, kind: macro_invocation, has: { field: macro, regex: '^bind_command$' } }
+fix: |-
+  External,
+  Complete,
+  Which,
+  Cd
+---
+id: which-split-paths
+language: rust
+files: [crates/nu-command/src/system/which_.rs]
+rule:
+  pattern: 'RealSys.env_split_paths($P)'
+fix: "$P.to_string_lossy().split(':').map(PathBuf::from).collect::<Vec<_>>()"
+---
+id: which-wasm-executable
+language: rust
+files: [crates/nu-command/src/system/which_.rs]
+rule:
+  kind: boolean_literal
+  regex: '^false$'
+  inside:
+    stopBy: end
+    kind: function_item
+    has: { field: name, regex: '^is_executable$' }
+    inside: { stopBy: end, kind: mod_item, has: { field: name, regex: '^wasm$' } }
+fix: 'self.is_file()'
+---
+id: drain-keep-exit-code
+language: rust
+files: [crates/nu-engine/src/eval_ir.rs]
+rule:
+  kind: else_clause
+  has: { stopBy: end, pattern: 'ctx.stack.set_last_exit_code(0, $S)' }
+  inside: { stopBy: end, kind: function_item, has: { field: name, regex: '^drain$' } }
+fix: ''

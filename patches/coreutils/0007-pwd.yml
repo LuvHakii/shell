@@ -1,0 +1,13 @@
+# The multicall binary starts in $PWD, so a host-set cwd reaches every util.
+# want coreutils-cwd-from-pwd 1
+id: coreutils-cwd-from-pwd
+language: rust
+files: [src/bin/coreutils.rs]
+rule:
+  pattern: let utils = util_map();
+  inside: { kind: function_item, has: { field: name, regex: '^main$' }, stopBy: end }
+fix: |-
+  if let Some(pwd) = std::env::var_os("PWD") {
+      let _ = std::env::set_current_dir(pwd);
+  }
+  let utils = util_map();

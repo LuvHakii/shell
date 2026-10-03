@@ -1,0 +1,43 @@
+# wasm32-wasip1 has no threads: drop par-each, run ls inline instead of on a rayon pool.
+# want ctx-drop-par-each 1
+# want ls-drop-pool 1
+# want ls-inline 1
+# want ls-par-bridge-count 1
+id: ctx-drop-par-each
+language: rust
+files: [crates/nu-command/src/default_context.rs]
+rule:
+  kind: identifier
+  regex: '^ParEach$'
+  inside: { stopBy: end, kind: macro_invocation, has: { field: macro, regex: '^bind_command$' } }
+fix:
+  template: ''
+  expandEnd: { regex: ',' }
+---
+id: ls-drop-pool
+language: rust
+files: [crates/nu-command/src/filesystem/ls.rs]
+rule:
+  kind: let_declaration
+  has: { field: pattern, regex: '^pool$' }
+fix: ''
+---
+id: ls-inline
+language: rust
+files: [crates/nu-command/src/filesystem/ls.rs]
+rule:
+  pattern: 'pool.install(|| { rayon::spawn($F); })'
+rewriters:
+  - id: drop-par-bridge
+    rule: { pattern: '$X.par_bridge()' }
+    fix: '$X'
+transform:
+  G: { rewrite: { source: $F, rewriters: [drop-par-bridge] } }
+fix: '($G)()'
+---
+id: ls-par-bridge-count
+language: rust
+files: [crates/nu-command/src/filesystem/ls.rs]
+rule:
+  pattern: '$X.par_bridge()'
+  inside: { stopBy: end, pattern: 'pool.install(|| { rayon::spawn($F); })' }

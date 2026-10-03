@@ -1,0 +1,127 @@
+# Build the filesystem and platform commands without the "os" feature; drop the ones that need process, terminal or watcher APIs.
+# want lib-ungate 4
+# want ctx-ungate 2
+# want ctx-drop 24
+# want mods-drop 14
+# want uses-drop 16
+# want save-drop-child-fn 1
+# want save-drop-child-import 1
+# want rm-drop-crossterm 1
+# want rm-confirm-line 1
+# want cd-path-ungate 1
+# want cd-permission-ungate 1
+# want cd-permission-ok 1
+id: lib-ungate
+language: rust
+files: [crates/nu-command/src/lib.rs]
+rule:
+  pattern: '#[cfg(feature = "os")]'
+  precedes:
+    any:
+      - { kind: mod_item, has: { field: name, regex: '^(filesystem|platform)$' } }
+      - { kind: use_declaration, regex: '^pub use (filesystem|platform)::' }
+fix: ''
+---
+id: ctx-ungate
+language: rust
+files: [crates/nu-command/src/default_context.rs]
+rule:
+  pattern: '#[cfg(feature = "os")]'
+  precedes: { has: { stopBy: end, kind: identifier, regex: '^(Cd|Du)$' } }
+fix: ''
+---
+id: ctx-drop
+language: rust
+files: [crates/nu-command/src/default_context.rs]
+rule:
+  kind: identifier
+  regex: '^(UMkdir|Mktemp|UMv|UCp|Start|UTouch|Watch|Idx\w*|Clear|InputList|InputListen|Kill|Term|TermSize|TermQuery|Whoami)$'
+  inside: { stopBy: end, kind: macro_invocation, has: { field: macro, regex: '^bind_command$' } }
+fix:
+  template: ''
+  expandEnd: { regex: ',' }
+---
+id: mods-drop
+language: rust
+files: [crates/nu-command/src/filesystem/mod.rs, crates/nu-command/src/platform/mod.rs]
+rule:
+  kind: mod_item
+  has: { field: name, regex: '^(idx|mktemp|start|ucp|umkdir|umv|utouch|watch|clear|input|kill|raw_mode|term|whoami)$' }
+fix: ''
+---
+id: uses-drop
+language: rust
+files: [crates/nu-command/src/filesystem/mod.rs, crates/nu-command/src/platform/mod.rs]
+rule:
+  kind: use_declaration
+  regex: '^pub use (idx|mktemp|start|ucp|umkdir|umv|utouch|watch|clear|input|kill|raw_mode|term|whoami)::'
+fix: ''
+---
+id: save-drop-child-fn
+language: rust
+files: [crates/nu-command/src/filesystem/save.rs]
+rule:
+  kind: function_item
+  has: { field: name, regex: '^write_or_consume_stderr$' }
+fix: ''
+---
+id: save-drop-child-import
+language: rust
+files: [crates/nu-command/src/filesystem/save.rs]
+rule:
+  kind: scoped_identifier
+  regex: '^process::ChildPipe$'
+  inside: { kind: use_declaration, stopBy: end }
+fix:
+  template: ''
+  expandEnd: { regex: ',' }
+---
+id: rm-drop-crossterm
+language: rust
+files: [crates/nu-command/src/filesystem/util.rs]
+rule:
+  kind: use_declaration
+  regex: '^use crossterm::'
+fix: ''
+---
+id: rm-confirm-line
+language: rust
+files: [crates/nu-command/src/filesystem/util.rs]
+rule:
+  kind: block
+  inside: { kind: function_item, field: body, has: { field: name, regex: '^get_interactive_confirmation$' } }
+fix: |-
+  {
+      eprint!("{} [Y/N]: ", prompt);
+      io::stderr().flush()?;
+      let mut line = String::new();
+      io::stdin().read_line(&mut line)?;
+      Ok(line.trim().eq_ignore_ascii_case("y"))
+  }
+---
+id: cd-path-ungate
+language: rust
+files: [crates/nu-utils/src/filesystem.rs]
+rule:
+  pattern: '#[cfg(any(windows, unix))]'
+  precedes: { pattern: 'use std::path::Path;' }
+fix: ''
+---
+id: cd-permission-ungate
+language: rust
+files: [crates/nu-utils/src/filesystem.rs]
+rule:
+  pattern: '#[cfg(unix)]'
+  precedes:
+    stopBy: { not: { kind: line_comment } }
+    kind: function_item
+    has: { field: name, regex: '^have_permission$' }
+fix: ''
+---
+id: cd-permission-ok
+language: rust
+files: [crates/nu-utils/src/filesystem.rs]
+rule:
+  pattern: 'access($$$).into()'
+  inside: { kind: function_item, stopBy: end, has: { field: name, regex: '^have_permission$' } }
+fix: 'PermissionResult::PermissionOk'

@@ -1,0 +1,78 @@
+# whoami/logname/hostname/uname answer from USER/LOGNAME/HOSTNAME (fallbacks root/localhost) and fixed kernel strings; setting the hostname fails.
+# want hostname-cfg 1
+# want hostname-set 1
+# want hostname-get 1
+# want logname-env 1
+# want whoami-env 1
+# want uname-sysname 1
+# want uname-nodename 1
+# want uname-release-version 2
+# want uname-osname 1
+id: hostname-cfg
+language: rust
+files: [src/uu/hostname/src/hostname.rs]
+rule:
+  kind: inner_attribute_item
+  regex: '^#!\[cfg\('
+fix: ''
+---
+id: hostname-set
+language: rust
+files: [src/uu/hostname/src/hostname.rs]
+rule:
+  pattern: hostname::set($H).map_err_context($$$)
+fix: Err(uucore::error::USimpleError::new(1, translate!("hostname-error-set-hostname")))
+---
+id: hostname-get
+language: rust
+files: [src/uu/hostname/src/hostname.rs]
+rule:
+  pattern: hostname::get().map_err_context($$$)?.to_string_lossy().into_owned()
+fix: std::env::var("HOSTNAME").unwrap_or_else(|_| "localhost".into())
+---
+id: logname-env
+language: rust
+files: [src/uu/logname/src/logname.rs]
+rule:
+  kind: block
+  inside: { kind: function_item, has: { field: name, regex: '^get_userlogin$' }, field: body }
+fix: |-
+  {
+      Some(std::env::var("LOGNAME").unwrap_or_else(|_| "root".into()))
+  }
+---
+id: whoami-env
+language: rust
+files: [src/uu/whoami/src/whoami.rs]
+rule:
+  pattern: platform::get_username()
+fix: Ok::<_, std::io::Error>(std::env::var_os("USER").unwrap_or_else(|| "root".into()))
+---
+id: uname-sysname
+language: rust
+files: [src/uu/uname/src/uname.rs]
+rule:
+  pattern: uname.sysname().to_owned()
+fix: '"Linux".into()'
+---
+id: uname-nodename
+language: rust
+files: [src/uu/uname/src/uname.rs]
+rule:
+  pattern: uname.nodename().to_owned()
+fix: std::env::var_os("HOSTNAME").unwrap_or_else(|| "localhost".into())
+---
+id: uname-release-version
+language: rust
+files: [src/uu/uname/src/uname.rs]
+rule:
+  pattern: uname.$M().to_owned()
+constraints: { M: { regex: '^(release|version)$' } }
+fix: '"wasi".into()'
+---
+id: uname-osname
+language: rust
+files: [src/uu/uname/src/uname.rs]
+rule:
+  pattern: uname.osname().to_owned()
+fix: '"GNU/Linux".into()'

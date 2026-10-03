@@ -1,0 +1,25 @@
+# Ctrl+C from the host: Signals polls tty.interrupted, and is never treated as empty.
+# want signals-host-interrupted 1
+# want signals-never-empty 1
+id: signals-host-interrupted
+language: rust
+files: [crates/nu-protocol/src/pipeline/signals.rs]
+rule:
+  pattern: 'self.signals.as_deref().is_some_and($F)'
+  inside: { stopBy: end, kind: function_item, has: { field: name, regex: '^interrupted$' } }
+fix: |-
+  self.signals.as_deref().is_some_and($F) || {
+      #[link(wasm_import_module = "tty")]
+      unsafe extern "C" {
+          fn interrupted() -> i32;
+      }
+      unsafe { interrupted() != 0 }
+  }
+---
+id: signals-never-empty
+language: rust
+files: [crates/nu-protocol/src/pipeline/signals.rs]
+rule:
+  pattern: 'self.signals.is_none()'
+  inside: { stopBy: end, kind: function_item, has: { field: name, regex: '^is_empty$' } }
+fix: 'false'

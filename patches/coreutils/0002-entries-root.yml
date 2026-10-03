@@ -1,0 +1,154 @@
+# One user exists: root (uid 0, gid 0). Replaces uucore's libc passwd/group backend.
+# want entries-drop-imports 6
+# want entries-id-types 1
+# want entries-drop-items 5
+# want entries-impl-passwd 1
+# want entries-impl-group 1
+# want entries-locate-passwd 1
+# want entries-locate-group 1
+# want entries-groups-gnu 1
+# want entries-cfg-not-unix 2
+# want ls-owner-root 2
+id: entries-drop-imports
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  kind: use_declaration
+  regex: '^use (core::ffi::|libc::time_t|libc::\{getgr|libc::\{getpw|std::ffi::CString;|std::ptr;)'
+fix:
+  template: ''
+  expandStart: { kind: attribute_item }
+---
+id: entries-id-types
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  pattern: 'use libc::{gid_t, uid_t};'
+fix: |-
+  #[allow(non_camel_case_types)]
+  pub type uid_t = u32;
+  #[allow(non_camel_case_types)]
+  pub type gid_t = u32;
+---
+id: entries-drop-items
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  any:
+    - { kind: function_item, has: { field: name, regex: '^(sort_groups|cstr2string)$' } }
+    - { kind: foreign_mod_item, has: { stopBy: end, kind: identifier, regex: '^getgrouplist$' } }
+    - { kind: macro_definition, has: { field: name, regex: '^f$' } }
+    - { kind: mod_item, has: { field: name, regex: '^test$' } }
+fix:
+  template: ''
+  expandStart: { kind: attribute_item }
+---
+id: entries-impl-passwd
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  pattern: 'impl Passwd { $$$ }'
+fix: |-
+  impl Passwd {
+      pub fn belongs_to(&self) -> Vec<gid_t> {
+          vec![0]
+      }
+  }
+---
+id: entries-impl-group
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  pattern: 'impl Group { $$$ }'
+fix: ''
+---
+id: entries-locate-passwd
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  pattern: 'f!(getpwnam, getpwuid, uid_t, Passwd);'
+fix: |-
+  fn not_found(k: impl std::fmt::Display) -> IOError {
+      IOError::new(ErrorKind::NotFound, format!("No such id: {k}"))
+  }
+
+  impl Locate<u32> for Passwd {
+      fn locate(k: u32) -> IOResult<Self> {
+          if k != 0 {
+              return Err(not_found(k));
+          }
+          Ok(Self {
+              name: "root".into(),
+              uid: 0,
+              gid: 0,
+              user_info: None,
+              user_shell: None,
+              user_dir: None,
+              user_passwd: None,
+          })
+      }
+  }
+
+  impl Locate<&str> for Passwd {
+      fn locate(k: &str) -> IOResult<Self> {
+          match k {
+              "root" | "0" => Self::locate(0),
+              _ => Err(not_found(k)),
+          }
+      }
+  }
+---
+id: entries-locate-group
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  pattern: 'f!(getgrnam, getgrgid, gid_t, Group);'
+fix: |-
+  impl Locate<u32> for Group {
+      fn locate(k: u32) -> IOResult<Self> {
+          if k != 0 {
+              return Err(not_found(k));
+          }
+          Ok(Self {
+              name: "root".into(),
+              gid: 0,
+          })
+      }
+  }
+
+  impl Locate<&str> for Group {
+      fn locate(k: &str) -> IOResult<Self> {
+          match k {
+              "root" | "0" => Self::locate(0),
+              _ => Err(not_found(k)),
+          }
+      }
+  }
+---
+id: entries-groups-gnu
+language: rust
+files: [src/uucore/src/lib/features/entries.rs]
+rule:
+  kind: function_item
+  has: { field: name, regex: '^get_groups_gnu$' }
+fix:
+  template: |-
+    pub fn get_groups_gnu(_arg_id: Option<u32>) -> IOResult<Vec<gid_t>> {
+        Ok(vec![0])
+    }
+  expandStart: { kind: attribute_item }
+---
+id: entries-cfg-not-unix
+language: rust
+files: [src/uucore/src/lib/features.rs, src/uucore/src/lib/lib.rs]
+rule:
+  pattern: '#[cfg(all(unix, feature = "entries"))]'
+fix: '#[cfg(feature = "entries")]'
+---
+id: ls-owner-root
+language: rust
+files: [src/uu/ls/src/display.rs]
+rule:
+  kind: string_literal
+  regex: '^"some(body|group)"$'
+fix: '"root"'

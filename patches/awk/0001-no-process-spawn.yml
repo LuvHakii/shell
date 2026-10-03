@@ -1,0 +1,45 @@
+# wasi-libc has no processes: system() warns and returns -1, pipe opens fail, pipes close as files.
+# want no-wait-h 1
+# want no-status-vars 2
+# want system-unsupported 1
+# want no-popen 2
+# want no-pclose 2
+id: no-wait-h
+language: c
+files: [run.c]
+rule:
+  pattern: '#include <sys/wait.h>'
+fix: ''
+---
+id: no-status-vars
+language: c
+files: [run.c]
+rule:
+  any: [{ pattern: 'int status = 0;' }, { pattern: 'int estatus = 0;' }]
+  inside: { kind: function_definition, has: { kind: function_declarator, has: { field: declarator, regex: '^bltin$' }, stopBy: end }, stopBy: end }
+fix: ''
+---
+id: system-unsupported
+language: c
+files: [run.c]
+rule:
+  pattern: 'case FSYSTEM: $$$B'
+fix: |-
+  case FSYSTEM:
+  WARNING("system() not supported: %s", getsval(x));
+  u = -1;
+  break;
+---
+id: no-popen
+language: c
+files: [run.c]
+rule:
+  pattern: 'popen($S, $M)'
+fix: 'NULL'
+---
+id: no-pclose
+language: c
+files: [run.c]
+rule:
+  pattern: 'pclose($F) == -1'
+fix: 'fclose($F) == EOF'
