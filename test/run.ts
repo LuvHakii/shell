@@ -100,4 +100,7 @@ const plain = await call('runNuRepl', [long, '\r', 'exit\r']);
 const resized = await call('runNuRepl', [long, 20, '\r', 'exit\r']);
 check(repaints(resized) === repaints(plain) + 1 && clean(resized), 'repl: resize repaints the line', `  plain=${repaints(plain)} resized=${repaints(resized)}\n${strip(resized.err)}`);
 
+const below = await call('runNuRepl', ['"a"', '\r', 'exit\r'], 500);
+check(!/\x1b\[(?:[3-9]\d|\d{3,});/.test(below.err) && /\x1b\[24;/.test(below.err) && clean(below), 'repl: cursor row below the window is clamped to the last row', `\n${strip(below.err)}`);
+
 await done();

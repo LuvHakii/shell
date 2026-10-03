@@ -1,0 +1,7 @@
+# want cursor-clamp 1
+id: cursor-clamp
+language: rust
+files: [src/cursor/sys/unix.rs]
+rule:
+  pattern: 'return Ok((x, y))'
+fix: 'return Ok((x, crate::terminal::size().map_or(y, |(_, rows)| if rows == 0 { y } else { y.min(rows - 1) })))'

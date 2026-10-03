@@ -9,11 +9,11 @@ Object.assign(globalThis, {
 		const root = new PreopenDirectory('/', new Map([['sub', new Directory(new Map([['a.txt', new File(new TextEncoder().encode('x\n'))]]))], ['bin', bin]]));
 		return runWasi(module, ['nu', ...args], ['PWD=/', 'PATH=/bin'], root, script, cols);
 	},
-	async runNuRepl(keys: (string | number)[]) {
+	async runNuRepl(keys: (string | number)[], row = 1) {
 		const tty = new Tty(keys);
 		let modes = '';
 		const dec = new TextDecoder();
-		const out = new Sink(d => dec.decode(d).includes('\x1b[6n') && tty.push('\x1b[1;1R'));
+		const out = new Sink(d => dec.decode(d).includes('\x1b[6n') && tty.push(`\x1b[${row};1R`));
 		const err = new Sink();
 		const root = new PreopenDirectory('/', new Map([['sub', new Directory(new Map([['apple.txt', new File(new Uint8Array())]]))]]));
 		const shim = new WASI(['nu'], ['PWD=/', 'HOME=/'], [tty, out, err, root]);
