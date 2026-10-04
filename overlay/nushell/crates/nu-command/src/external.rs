@@ -112,15 +112,16 @@ impl Command for External {
         let mut res = vec![0u8; n as usize];
         unsafe { spawn_read(res.as_mut_ptr()) };
 
-        let code = i32::from_le_bytes(res[0..4].try_into().unwrap());
-        let out_len = u32::from_le_bytes(res[4..8].try_into().unwrap()) as usize;
-        let err_len = u32::from_le_bytes(res[8..12].try_into().unwrap()) as usize;
-        let out = res[12..12 + out_len].to_vec();
-        let err = &res[12 + out_len..12 + out_len + err_len];
+        let (code, rest) = res.split_first_chunk().unwrap();
+        let (out_len, rest) = rest.split_first_chunk().unwrap();
+        let (err_len, rest) = rest.split_first_chunk().unwrap();
+        let (out, rest) = rest.split_at(u32::from_le_bytes(*out_len) as usize);
+        let (err, rest) = rest.split_at(u32::from_le_bytes(*err_len) as usize);
+        let code = i32::from_le_bytes(*code);
         stack.set_last_exit_code(code, call.head);
         if matches!(stack.stderr(), OutDest::PipeSeparate) {
             let record = record! {
-                "stdout" => Value::string(String::from_utf8_lossy(&out), call.head),
+                "stdout" => Value::string(String::from_utf8_lossy(out), call.head),
                 "stderr" => Value::string(String::from_utf8_lossy(err), call.head),
                 "exit_code" => Value::int(code.into(), call.head),
             };
@@ -129,10 +130,14 @@ impl Command for External {
         if !err.is_empty() {
             let _ = std::io::stderr().write_all(err);
         }
+        if rest.first() == Some(&1) {
+            return Ok(nuon::from_nuon(&String::from_utf8_lossy(out), Some(call.head))?
+                .into_pipeline_data());
+        }
 
         Ok(PipelineData::byte_stream(
             ByteStream::read(
-                Cursor::new(out),
+                Cursor::new(out.to_vec()),
                 call.head,
                 engine_state.signals().clone(),
                 ByteStreamType::Unknown,
