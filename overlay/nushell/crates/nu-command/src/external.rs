@@ -20,6 +20,10 @@ unsafe extern "C" {
     fn spawn_read(buf: *mut u8);
 }
 
+const PIPED: usize = 1 << 31;
+const STDOUT_CAPTURED: usize = 1 << 30;
+const STDERR_CAPTURED: usize = 1 << 29;
+
 #[derive(Clone)]
 pub struct External;
 
@@ -86,6 +90,12 @@ impl Command for External {
         }
 
         let envs = env_to_strings(engine_state, stack)?;
+        let mut tag = if matches!(input, PipelineData::Empty) { 0 } else { PIPED };
+        for (dest, bit) in [(stack.stdout(), STDOUT_CAPTURED), (stack.stderr(), STDERR_CAPTURED)] {
+            if !matches!(dest, OutDest::Print | OutDest::Inherit) {
+                tag |= bit;
+            }
+        }
         let stdin = pipeline_bytes(engine_state, stack, input)?;
 
         let mut req = Vec::new();
@@ -99,7 +109,8 @@ impl Command for External {
             put(&mut req, k.as_bytes());
             put(&mut req, v.as_bytes());
         }
-        put(&mut req, &stdin);
+        put_len(&mut req, stdin.len() | tag);
+        req.extend_from_slice(&stdin);
 
         let n = unsafe { spawn(req.as_ptr(), req.len()) };
         if n < 0 {
@@ -127,8 +138,14 @@ impl Command for External {
             };
             return Ok(Value::record(record, call.head).into_pipeline_data());
         }
-        if !err.is_empty() {
-            let _ = std::io::stderr().write_all(err);
+        match stack.stderr() {
+            OutDest::File(file) => {
+                let _ = (&**file).write_all(err);
+            }
+            OutDest::Null => {}
+            _ => {
+                let _ = std::io::stderr().write_all(err);
+            }
         }
         if rest.first() == Some(&1) {
             return Ok(nuon::from_nuon(&String::from_utf8_lossy(out), Some(call.head))?
