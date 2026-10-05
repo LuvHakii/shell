@@ -1,0 +1,8 @@
+# std::env::join_paths is unsupported on wasi and always errors, so a list $env.PATH never became a string: which, completion and the highlighter saw an empty PATH.
+# want path-join 1
+id: path-join
+language: rust
+files: [crates/nu-engine/src/env.rs]
+rule:
+  pattern: 'std::env::join_paths($$$)'
+fix: 'Ok::<std::ffi::OsString, std::env::JoinPathsError>(paths.join(":").into())'
